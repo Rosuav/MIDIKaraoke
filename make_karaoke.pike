@@ -18,7 +18,7 @@ void make_karaoke(string fn, string outdir) {
 	//According to the SMF Type 1 spec, the first track should have all the timing info.
 	sscanf(chunks[0][1], "%2c%*2c%2c", int format, int timediv);
 	if (format == 2) {werror("Can't handle Type 2 MIDI currently\n"); return;}
-	write("Timing: %d\n", timediv);
+	//write("Timing: %d\n", timediv);
 	int pos = 0; //Time since last tempo change
 	int usec = 0; //Not guaranteed to be entirely accurate - it may lose up to one microsecond per tempo shift
 	array timings = ({({0, 0, 500000})}); //Each entry is [delta-miditime, usec-base, tempo]
@@ -27,7 +27,7 @@ void make_karaoke(string fn, string outdir) {
 		if (ev[1] == 0xFF && ev[2] == TEMPO) {
 			sscanf(ev[3], "%3c", int tempo);
 			usec += pos * timings[-1][2] / timediv;
-			write("[%d %d] Tempo: %d\n", pos, usec/1000, tempo);
+			//write("[%d %d] Tempo: %d\n", pos, usec/1000, tempo);
 			timings += ({({pos, usec, tempo})});
 			pos = 0;
 		}
@@ -48,7 +48,7 @@ void make_karaoke(string fn, string outdir) {
 			//pass more than one at once; an accelerando/ritando can be implemented
 			//with multiple tempo markers, and may easily have no lyrics until done.)
 			pos -= timings[++timingpos][0];
-			write("Tempo mark after %d, at usec %d\n", timings[timingpos][0], timings[timingpos][1]);
+			//write("Tempo mark after %d, at usec %d\n", timings[timingpos][0], timings[timingpos][1]);
 		}
 		if (ev[1] == 0xFF && ev[2] == LYRIC) {
 			//write("[%d] %02X %s\n", pos, ev[2], replace(ev[3], (["\r": "<eol>", "\n": "<EOL>"])));
