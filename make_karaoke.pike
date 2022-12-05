@@ -3,9 +3,13 @@ object midilib = (object)"../shed/patchpatch.pike";
 //Meta-event types
 enum {LYRIC = 0x05, TEMPO = 0x51, TIMESIG = 0x58};
 
-int pos_to_usec(int pos, array timing, int timediv) {
+string pos_to_vtt(int pos, array timing, int timediv) {
 	//The timing info has a base microsecond position, and the tempo
-	return timing[1] + pos * timing[2] / timediv;
+	int msec = (timing[1] + pos * timing[2] / timediv) / 1000;
+	int sec = msec / 1000; msec %= 1000;
+	int min = sec / 60; sec %= 60;
+	int hr = min / 60; min %= 60;
+	return sprintf("%02d:%02d:%02d.%03d", hr, min, sec, msec);
 }
 
 void make_karaoke(string fn, string outdir) {
@@ -34,7 +38,9 @@ void make_karaoke(string fn, string outdir) {
 	array track = chunks[2][1];
 	pos = 0;
 	int timingpos = 0; //Index into timings[]
-	int start = 0; string line = "";
+	string start, line = "";
+	Stdio.File vtt = Stdio.File(outdir + "temp.vtt", "wct");
+	vtt->write("WEBVTT\n\n");
 	foreach (track, array ev) {
 		pos += ev[0];
 		while (pos >= timings[timingpos + 1][0]) {
@@ -46,16 +52,17 @@ void make_karaoke(string fn, string outdir) {
 		}
 		if (ev[1] == 0xFF && ev[2] == LYRIC) {
 			//write("[%d] %02X %s\n", pos, ev[2], replace(ev[3], (["\r": "<eol>", "\n": "<EOL>"])));
-			if (line == "") start = pos_to_usec(pos, timings[timingpos], timediv);
+			string time = pos_to_vtt(pos, timings[timingpos], timediv);
+			if (line == "") start = time;
+			//else line += "<" + time + ">"; //Enable karaoke-style captions. Remove if not needed (eg if latency is going to be too strong)
 			line += ev[3];
 			if (has_value("\r\n", ev[3][-1])) {
 				line = String.trim(line);
-				if (line != "") write("[%d-%d] %s\n", start / 1000, pos_to_usec(pos, timings[timingpos], timediv) / 1000, line);
+				if (line != "") vtt->write("%s --> %s\n%s\n\n", start, time, line);
 				line = "";
 			}
 		}
 	}
-	write("[%d] End of track\n", pos_to_usec(pos, timings[timingpos], timediv) / 1000);
 }
 
 int main(int argc, array(string) argv) {
