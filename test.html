@@ -8,9 +8,17 @@
 </head>
 <body>
 <main>
-<video controls src="cache/temp.ogg">
-<track default kind="captions" src="cache/temp.vtt">
-</video>
+<audio controls src="cache/temp.ogg">
+<track default kind="captions" src="cache/temp.vtt" label="Lyrics">
+</audio>
+<script>
+document.querySelector("track").oncuechange = e => {
+	//TODO: Once the lyric track is loaded, render ALL lyrics into a UL (remove bullets)
+	//and then as they become active/inactive, style them differently and scrollIntoView.
+	const c = e.currentTarget.track.activeCues;
+	for (let i = 0; i < c.length; ++i) console.log(c[i].text);
+};
+</script>
 </main>
 </body>
 </html>
