@@ -1,7 +1,7 @@
 object midilib = (object)"../shed/patchpatch.pike";
 
 //Meta-event types
-enum {LYRIC = 0x05, TEMPO = 0x51, TIMESIG = 0x58};
+enum {TEXT = 0x01, LYRIC = 0x05, TEMPO = 0x51, TIMESIG = 0x58};
 
 string pos_to_vtt(int pos, array timing, int timediv) {
 	//The timing info has a base microsecond position, and the tempo
@@ -33,14 +33,29 @@ void make_karaoke(string fn, string outdir) {
 		}
 	}
 	timings += ({({1<<30, 0, 0})}); //Have a dummy timing entry that we'll never reach
-	//For now, assume that track #2 has the lyrics. TODO: Find the track with the most lyric events.
-	//TODO: Also support TEXT (0x01) instead of lyrics (0x05)
-	array track = chunks[2][1];
+
+	//Find the chunk with the most LYRIC entries. If none, use the chunk with the
+	//most TEXT entries instead, since some files use text lyrics. It's like SPF.
+	array besttext, bestlyrics;
+	int ntextbest, nlyricsbest;
+	foreach (chunks[1..], [string _, array track]) {
+		int ntext, nlyrics;
+		foreach (track, array ev) {
+			if (ev[1] == 0xFF && ev[2] == TEXT) ++ntext;
+			if (ev[1] == 0xFF && ev[2] == LYRIC) ++nlyrics;
+		}
+		if (nlyrics > nlyricsbest) {bestlyrics = track; nlyricsbest = nlyrics;}
+		if (ntext > ntextbest) {besttext = track; ntextbest = ntext;}
+	}
+	array track = bestlyrics; int event = LYRIC;
+	if (!track) {track = besttext; event = TEXT;}
+	if (!track) track = ({ }); //No lyrics or even text. Quite unusual (there's normally at least some sort of descriptive info).
 	pos = 0;
 	int timingpos = 0; //Index into timings[]
 	string start, line = "";
 	Stdio.File vtt = Stdio.File(outdir + "temp.vtt", "wct");
 	vtt->write("WEBVTT\n\n");
+	track += ({({0, 0xFF, event, "\n"})}); //Hack: Ensure proper emission of final entry
 	foreach (track, array ev) {
 		pos += ev[0];
 		while (pos >= timings[timingpos + 1][0]) {
@@ -50,7 +65,16 @@ void make_karaoke(string fn, string outdir) {
 			pos -= timings[++timingpos][0];
 			//write("Tempo mark after %d, at usec %d\n", timings[timingpos][0], timings[timingpos][1]);
 		}
-		if (ev[1] == 0xFF && ev[2] == LYRIC) {
+		if (ev[1] == 0xFF && ev[2] == event) {
+			string pending = "";
+			if (has_value("/\\", ev[3][0])) {
+				//Some lyrics mark the start of a line with a slash or backslash,
+				//rather than marking the end of a line with a carriage return or
+				//line feed. Process the line end first, and then put the text in
+				//the buffer for later.
+				pending = ev[3][1..];
+				ev[3] = (['/': "\r", '\\': "\n"])[ev[3][0]]; //Currently it makes no difference, but I may in the future distinguish.
+			}
 			//write("[%d] %02X %s\n", pos, ev[2], replace(ev[3], (["\r": "<eol>", "\n": "<EOL>"])));
 			string time = pos_to_vtt(pos, timings[timingpos], timediv);
 			if (line == "") start = time;
@@ -59,7 +83,8 @@ void make_karaoke(string fn, string outdir) {
 			if (has_value("\r\n", ev[3][-1])) {
 				line = String.trim(line);
 				if (line != "") vtt->write("%s --> %s\n%s\n\n", start, time, line);
-				line = "";
+				line = pending;
+				start = time; //Will be overwritten by the next lyric entry's timestamp if pending was blank
 			}
 		}
 	}
