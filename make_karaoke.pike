@@ -54,6 +54,8 @@ void make_karaoke(string fn, string outdir) {
 	int timingpos = 0; //Index into timings[]
 	string start, line = "";
 	Stdio.File vtt = Stdio.File(outdir + "temp.vtt", "wct");
+	string ogg = replace(fn, ([".kar": ".ogg", ".mid": ".ogg", ".midi": ".ogg"]));
+	catch {Stdio.write_file(outdir + "temp.ogg", Stdio.read_file(ogg));};
 	vtt->write("WEBVTT\n\n");
 	track += ({({0, 0xFF, event, "\n"})}); //Hack: Ensure proper emission of final entry
 	foreach (track, array ev) {
