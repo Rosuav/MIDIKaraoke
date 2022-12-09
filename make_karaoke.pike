@@ -15,14 +15,15 @@ string pos_to_vtt(int pos, array timing, int timediv) {
 
 Regexp.SimpleRegexp slugify = Regexp.SimpleRegexp("[^a-zA-Z0-9]+");
 
-void make_karaoke(string fn, string outdir) {
+string make_karaoke(string fn, string outdir) {
 	string slug = slugify->replace(fn, "_");
-	if (file_stat(outdir + slug + ".vtt")) return;
+	string outfn = outdir + slug + ".vtt";
+	if (file_stat(outfn)) return outfn;
 	array(array(string|array(array(int|string)))) chunks = midilib->parsesmf(Stdio.read_file(fn));
 	//write("%d %O\n", sizeof(chunks), chunks[2]);
 	//According to the SMF Type 1 spec, the first track should have all the timing info.
 	sscanf(chunks[0][1], "%2c%*2c%2c", int format, int timediv);
-	if (format == 2) {werror("Can't handle Type 2 MIDI currently\n"); return;}
+	if (format == 2) {werror("Can't handle Type 2 MIDI currently\n"); return outfn;}
 	//write("Timing: %d\n", timediv);
 	int pos = 0; //Time since last tempo change
 	int usec = 0; //Not guaranteed to be entirely accurate - it may lose up to one microsecond per tempo shift
@@ -58,7 +59,7 @@ void make_karaoke(string fn, string outdir) {
 	pos = 0;
 	int timingpos = 0; //Index into timings[]
 	string start, line = "";
-	Stdio.File vtt = Stdio.File(outdir + slug + ".vtt", "wct");
+	Stdio.File vtt = Stdio.File(outfn, "wct");
 	string ogg = replace(fn, ([".kar": ".ogg", ".mid": ".ogg", ".midi": ".ogg"]));
 	vtt->write("WEBVTT\n\n");
 	track += ({({0, 0xFF, event, "\n"})}); //Hack: Ensure proper emission of final entry
@@ -95,6 +96,7 @@ void make_karaoke(string fn, string outdir) {
 			}
 		}
 	}
+	return outfn;
 }
 
 void send(Protocols.WebSocket.Connection conn, mapping msg) {
@@ -104,7 +106,7 @@ void send(Protocols.WebSocket.Connection conn, mapping msg) {
 string authkey = "";
 void websocket_init(object conn) {
 	write("Websocket connected.\n");
-	send(conn, (["cmd": "init", "type": "chan_vlc", "group": authkey + "#rosuav"]));
+	send(conn, (["cmd": "init", "type": "chan_vlc", "group": authkey + "#rosuav"])); //TODO: Let the channel be configurable
 }
 
 void msg(Protocols.WebSocket.Frame frm, object conn) {
@@ -129,7 +131,17 @@ void msg(Protocols.WebSocket.Frame frm, object conn) {
 			foreach (({".kar", ".mid", ".midi"}), string ext) {
 				foreach (files, string f) if (lower_case(f) == base + ext) midi = f;
 			}
-			if (midi) make_karaoke(dirname(fn) + "/" + midi, "cache/");
+			if (!midi) return;
+			string webvtt = make_karaoke(dirname(fn) + "/" + midi, "cache/");
+			string hash = String.string2hex(Crypto.SHA1.hash(fn));
+			write("%O -> %O (was %O)\n", fn, hash, data->curnamehash);
+			if (hash != data->curnamehash) send(conn, ([
+				"cmd": "karaoke", "namehash": hash,
+				//Not sending the raw audio data at this time.
+				"audiotype": "audio/ogg",
+				"webvttdata": Stdio.read_file(webvtt),
+			]));
+			return;
 		}
 	}
 	write("Got message: %O\n", data);
