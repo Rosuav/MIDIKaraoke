@@ -1,4 +1,5 @@
 object midilib = (object)"../shed/patchpatch.pike";
+constant VLC_EXTENSION_PATH = "~/.local/share/vlc/lua/extensions"; //TODO: How would this work on other platforms??
 
 //Meta-event types
 enum {TEXT = 0x01, LYRIC = 0x05, TEMPO = 0x51, TIMESIG = 0x58};
@@ -12,7 +13,11 @@ string pos_to_vtt(int pos, array timing, int timediv) {
 	return sprintf("%02d:%02d:%02d.%03d", hr, min, sec, msec);
 }
 
+Regexp.SimpleRegexp slugify = Regexp.SimpleRegexp("[^a-zA-Z0-9]+");
+
 void make_karaoke(string fn, string outdir) {
+	string slug = slugify->replace(fn, "_");
+	if (file_stat(outdir + slug + ".vtt")) return;
 	array(array(string|array(array(int|string)))) chunks = midilib->parsesmf(Stdio.read_file(fn));
 	//write("%d %O\n", sizeof(chunks), chunks[2]);
 	//According to the SMF Type 1 spec, the first track should have all the timing info.
@@ -53,9 +58,8 @@ void make_karaoke(string fn, string outdir) {
 	pos = 0;
 	int timingpos = 0; //Index into timings[]
 	string start, line = "";
-	Stdio.File vtt = Stdio.File(outdir + "temp.vtt", "wct");
+	Stdio.File vtt = Stdio.File(outdir + slug + ".vtt", "wct");
 	string ogg = replace(fn, ([".kar": ".ogg", ".mid": ".ogg", ".midi": ".ogg"]));
-	catch {Stdio.write_file(outdir + "temp.ogg", Stdio.read_file(ogg));};
 	vtt->write("WEBVTT\n\n");
 	track += ({({0, 0xFF, event, "\n"})}); //Hack: Ensure proper emission of final entry
 	foreach (track, array ev) {
@@ -68,6 +72,7 @@ void make_karaoke(string fn, string outdir) {
 			//write("Tempo mark after %d, at usec %d\n", timings[timingpos][0], timings[timingpos][1]);
 		}
 		if (ev[1] == 0xFF && ev[2] == event) {
+			if (event == TEXT && has_prefix(ev[3], "@")) continue; //Files that use text lyrics also seem to encode metadata with "@<letter><info>" format.
 			string pending = "";
 			if (has_value("/\\", ev[3][0])) {
 				//Some lyrics mark the start of a line with a slash or backslash,
@@ -92,6 +97,58 @@ void make_karaoke(string fn, string outdir) {
 	}
 }
 
-int main(int argc, array(string) argv) {
-	foreach (argv[1..], string arg) make_karaoke(arg, "cache/");
+void send(Protocols.WebSocket.Connection conn, mapping msg) {
+	conn->send_text(Standards.JSON.encode(msg));
+}
+
+string authkey = "";
+void websocket_init(object conn) {
+	write("Websocket connected.\n");
+	send(conn, (["cmd": "init", "type": "chan_vlc", "group": authkey + "#rosuav"]));
+}
+
+void msg(Protocols.WebSocket.Frame frm, object conn) {
+	mixed data;
+	if (catch {data = Standards.JSON.decode(frm->text);}) return;
+	if (!mappingp(data)) return;
+	if (data->cmd == "update") {
+		if (data->filename != "") {
+			object uri = Standards.URI(data->filename);
+			string fn = uri->path;
+			array files = get_dir(dirname(fn));
+			//Assuming here that the original file name is the same as the current, with
+			//just the part after the (only) dot being changed. If the original file had
+			//multiple dots, Timidity will have replaced them with underscores. A better
+			//way to recover the original file name would be to query the OGG metadata -
+			//this is created by Timidity and has LOCATION set to the original file. I'm
+			//not sure what to do with non-OGG files though. FLAC and WAV don't work.
+			sscanf(basename(fn), "%s.", string base);
+			files = glob(base + ".*", files);
+			base = lower_case(base);
+			string midi;
+			foreach (({".kar", ".mid", ".midi"}), string ext) {
+				foreach (files, string f) if (lower_case(f) == base + ext) midi = f;
+			}
+			if (midi) make_karaoke(dirname(fn) + "/" + midi, "cache/");
+		}
+	}
+	write("Got message: %O\n", data);
+}
+
+int main() {
+	//Intended logic:
+	//1) On startup, find out what song is playing, and make_karaoke that song
+	//2) On song change signal, make_karaoke the new song
+	//3) Periodically check song position
+	//4) On pause/play/stop, pass the signal along
+	string lua = Stdio.read_file(replace(VLC_EXTENSION_PATH, "~", System.get_home()) + "/vlcstillebot.lua");
+	sscanf(lua || "", "%*s?auth=%[^\n&]&", string key);
+	authkey = key || "";
+	object conn = Protocols.WebSocket.Connection();
+	conn->onopen = websocket_init;
+	conn->onmessage = msg;
+	//TODO: Disconnect hook
+	conn->connect("wss://sikorsky.rosuav.com/ws");
+	//foreach (argv[1..], string arg) make_karaoke(arg, "cache/");
+	return -1;
 }
