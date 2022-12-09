@@ -144,6 +144,18 @@ void msg(Protocols.WebSocket.Frame frm, object conn) {
 			return;
 		}
 	}
+	if (data->cmd == "requestaudio") {
+		object uri = Standards.URI(data->uri);
+		string fn = uri->path;
+		string hash = String.string2hex(Crypto.SHA1.hash(fn));
+		string audiodata = "";
+		if (hash == data->hash) audiodata = Stdio.read_file(fn);
+		send(conn, ([
+			"cmd": "provideaudio", "namehash": hash,
+			"audiodata": audiodata,
+		]));
+		return;
+	}
 	write("Got message: %O\n", data);
 }
 
