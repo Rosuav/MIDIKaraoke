@@ -138,7 +138,7 @@ void msg(Protocols.WebSocket.Frame frm, object conn) {
 			if (hash != data->curnamehash) send(conn, ([
 				"cmd": "karaoke", "namehash": hash,
 				//Not sending the raw audio data at this time.
-				"audiotype": "audio/ogg",
+				"audiotype": "audio/ogg", //TODO: give other MIME types as appropriate
 				"webvttdata": Stdio.read_file(webvtt),
 			]));
 			return;

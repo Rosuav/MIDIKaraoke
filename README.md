@@ -1,25 +1,14 @@
-MIDI Karoke experiments
-=======================
+MIDI Karoke for StilleBot
+=========================
 
-Playing around with HTML5 Audio and its subtitling/captioning abilities.
+Links with the StilleBot VLC integration and provides subtitles/captions with
+song lyrics derived from MIDI Karaoke files.
 
-Ultimate goal:
+The bot drives everything and is the sole information broker. When the lyric
+engine starts up, it queries the bot for status (which will have come from
+VLC), then locates the MIDI file that this was derived from. Assuming it can
+find it, it then parses the file, locates the lyrics, generates a WEBVTT file,
+and sends that to StilleBot. It can also provide the audio file itself, but
+does so only on request, to avoid spamming megabytes of unwanted audio data.
 
-* When a user requests "what's playing?", provide the info live.
-* This requires making a way to mute the audio and keep the subtitles going.
-* Ask VLC what's playing. It'll often be an OGG. Look in that directory for
-  either a KAR or a MID of the same name, and be aware it could be ".kar" or
-  ".KAR" depending on where the file came from.
-* Check the cache to see if we have it. If not:
-  - Parse the MIDI file
-  - Render to OGG? Or use what VLC is already using?
-  - Write out a VTT subtitles file - practically the same as SRT
-* Render the default HTML page and link to the websocket.
-
-Next steps:
-
-* Synchronize timings. <== big one
-* Synchronize play/pause status, but only if audio is untouched.
-  - It should be perfectly reasonable to pause the audio, unmute it, etc; this
-    should disconnect you from all synchronization.
-  - Need a way to say "resume" - resync immediately and then stay in sync.
+Timing synchronization is handled by StilleBot directly.
