@@ -18,10 +18,6 @@ Ultimate goal:
 
 Next steps:
 
-* Migrate test.html and karaoke.{js,css} into StilleBot, thus removing the need
-  for cross-origin permissions
-* Link to the websocket and fetch new audio on the basis of the provided hash
-  - The websocket may need to get the hash provided to it
 * Synchronize timings. <== big one
 * Synchronize play/pause status, but only if audio is untouched.
   - It should be perfectly reasonable to pause the audio, unmute it, etc; this
