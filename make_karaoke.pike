@@ -90,7 +90,8 @@ string make_karaoke(string fn, string outdir) {
 			line += ev[3];
 			if (has_value("\r\n", ev[3][-1])) {
 				line = String.trim(line);
-				if (line != "") vtt->write("%s --> %s\n%s\n\n", start, time, line);
+				catch {line = utf8_to_string(line);}; //Attempt UTF-8, if not, assume ISO-8859-1
+				if (line != "") vtt->write("%s --> %s\n%s\n\n", start, time, string_to_utf8(line));
 				line = pending;
 				start = time; //Will be overwritten by the next lyric entry's timestamp if pending was blank
 			}
