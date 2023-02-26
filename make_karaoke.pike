@@ -1,3 +1,4 @@
+//Possibly badly-named; this makes a VTT from a MIDI Karaoke file.
 object midilib = (object)"../shed/patchpatch.pike";
 constant VLC_EXTENSION_PATH = "~/.local/share/vlc/lua/extensions"; //TODO: How would this work on other platforms??
 
@@ -160,7 +161,11 @@ void msg(Protocols.WebSocket.Frame frm, object conn) {
 	write("Got message: %O\n", data);
 }
 
-int main() {
+int main(int argc, array(string) argv) {
+	if (argc > 1) {
+		foreach (argv[1..], string arg) make_karaoke(arg, "cache/");
+		return 0;
+	}
 	//Intended logic:
 	//1) On startup, find out what song is playing, and make_karaoke that song
 	//2) On song change signal, make_karaoke the new song
@@ -174,6 +179,5 @@ int main() {
 	conn->onmessage = msg;
 	//TODO: Disconnect hook
 	conn->connect("wss://sikorsky.rosuav.com/ws");
-	//foreach (argv[1..], string arg) make_karaoke(arg, "cache/");
 	return -1;
 }
