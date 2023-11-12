@@ -116,7 +116,7 @@ void msg(Protocols.WebSocket.Frame frm, object conn) {
 	if (catch {data = Standards.JSON.decode(frm->text);}) return;
 	if (!mappingp(data)) return;
 	if (data->cmd == "update") {
-		if (data->filename != "") {
+		if (data->filename && data->filename != "") {
 			object uri = Standards.URI(data->filename);
 			string fn = uri->path;
 			array files = get_dir(dirname(fn));
