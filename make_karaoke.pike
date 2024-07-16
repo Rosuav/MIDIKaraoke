@@ -108,7 +108,7 @@ void send(Protocols.WebSocket.Connection conn, mapping msg) {
 string authkey = "";
 void websocket_init(object conn) {
 	write("Websocket connected.\n");
-	send(conn, (["cmd": "init", "type": "chan_vlc", "group": authkey + "#rosuav"])); //TODO: Let the channel be configurable
+	send(conn, (["cmd": "init", "type": "chan_vlc", "group": authkey + "#49497888"])); //TODO: Let the channel be configurable
 }
 
 void msg(Protocols.WebSocket.Frame frm, object conn) {
