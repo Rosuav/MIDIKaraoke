@@ -60,7 +60,7 @@ string make_karaoke(string fn, string outdir) {
 	pos = 0;
 	int timingpos = 0; //Index into timings[]
 	string start, line = "";
-	Stdio.File vtt = Stdio.File(outfn, "wct");
+	Stdio.File vtt = outdir == "-" ? Stdio.stdout : Stdio.File(outfn, "wct");
 	string ogg = replace(fn, ([".kar": ".ogg", ".mid": ".ogg", ".midi": ".ogg"]));
 	vtt->write("WEBVTT\n\n");
 	track += ({({0, 0xFF, event, "\n"})}); //Hack: Ensure proper emission of final entry
@@ -163,7 +163,7 @@ void msg(Protocols.WebSocket.Frame frm, object conn) {
 
 int main(int argc, array(string) argv) {
 	if (argc > 1) {
-		foreach (argv[1..], string arg) make_karaoke(arg, "cache/");
+		foreach (argv[1..], string arg) make_karaoke(arg, "-");
 		return 0;
 	}
 	//Intended logic:
