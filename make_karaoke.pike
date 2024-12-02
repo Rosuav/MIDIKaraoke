@@ -16,11 +16,12 @@ string pos_to_vtt(int pos, array timing, int timediv) {
 
 Regexp.SimpleRegexp slugify = Regexp.SimpleRegexp("[^a-zA-Z0-9]+");
 
-string make_karaoke(string fn, string outdir) {
+string make_karaoke(string fn, string outdir, string|void mididev) {
 	string slug = slugify->replace(fn, "_");
 	string outfn = outdir + slug + ".vtt";
 	if (file_stat(outfn)) return outfn;
 	array(array(string|array(array(int|string)))) chunks = midilib->parsesmf(Stdio.read_file(fn));
+	Stdio.File player = mididev && Stdio.File(mididev, "wct"); //If present, will write events to it in real time (or as close as we can get to it)
 	//write("%d %O\n", sizeof(chunks), chunks[2]);
 	//According to the SMF Type 1 spec, the first track should have all the timing info.
 	sscanf(chunks[0][1], "%2c%*2c%2c", int format, int timediv);
@@ -45,6 +46,31 @@ string make_karaoke(string fn, string outdir) {
 	//most TEXT entries instead, since some files use text lyrics. It's like SPF.
 	array besttext, bestlyrics;
 	int ntextbest, nlyricsbest;
+	//In playback mode, flatten to a single track (which will then be the one with the most lyrics).
+	//This allows all note messages to be sighted in the correct order, regardless of chunks. SMF0 mode.
+	if (player) {
+		array MThd = chunks[0]; chunks = chunks[1..][*][1];
+		array chunk = ({ });
+		while (1) {
+			//If any chunk has an event at time zero, use it. Easy.
+			//Otherwise, pick the smallest delta time, subtract that from all other chunks' deltas.
+			int best = -1, besttrack;
+			foreach (chunks; int t; array c) {
+				if (!sizeof(c)) continue;
+				if (!c[0][0]) {chunk += ({c[0]}); chunks[t] = c[1..]; best = 0; break;}
+				if (best == -1 || c[0][0] < best) {best = c[0][0]; besttrack = t;}
+			}
+			if (best == -1) break; //All done!
+			if (!best) continue; //Easy, grab the next.
+			//Okay. Advance all chunks' deltas by the best, except on besttrack, where we move the whole event into the output.
+			foreach (chunks; int t; array c) {
+				if (!sizeof(c)) continue;
+				if (t == besttrack) {chunk += ({c[0]}); chunks[t] = c[1..];}
+				else c[0][0] -= best;
+			}
+		}
+		chunks = ({MThd, ({"MTrk", chunk})}); //There. We now effectively have an SMF0.
+	}
 	foreach (chunks[1..], [string _, array track]) {
 		int ntext, nlyrics;
 		foreach (track, array ev) {
@@ -61,9 +87,11 @@ string make_karaoke(string fn, string outdir) {
 	int timingpos = 0; //Index into timings[]
 	string start, line = "";
 	Stdio.File vtt = outdir == "-" ? Stdio.stdout : Stdio.File(outfn, "wct");
+	if (player) vtt = Stdio.File("/dev/null", "wct"); //HAAAAAAACK
 	string ogg = replace(fn, ([".kar": ".ogg", ".mid": ".ogg", ".midi": ".ogg"]));
 	vtt->write("WEBVTT\n\n");
 	track += ({({0, 0xFF, event, "\n"})}); //Hack: Ensure proper emission of final entry
+	int lastpos = 0;
 	foreach (track, array ev) {
 		pos += ev[0];
 		while (pos >= timings[timingpos + 1][0]) {
@@ -72,6 +100,12 @@ string make_karaoke(string fn, string outdir) {
 			//with multiple tempo markers, and may easily have no lyrics until done.)
 			pos -= timings[++timingpos][0];
 			//write("Tempo mark after %d, at usec %d\n", timings[timingpos][0], timings[timingpos][1]);
+		}
+		if (player) {
+			int advance = (timings[timingpos][1] + pos * timings[timingpos][2] / timediv) / 1000 - lastpos;
+			lastpos += advance;
+			sleep(advance / 1000.0);
+			if (ev[1] != 255) player->write((string)ev[1..]);
 		}
 		if (ev[1] == 0xFF && ev[2] == event) {
 			if (event == TEXT && has_prefix(ev[3], "@")) continue; //Files that use text lyrics also seem to encode metadata with "@<letter><info>" format.
@@ -85,6 +119,7 @@ string make_karaoke(string fn, string outdir) {
 				ev[3] = (['/': "\r", '\\': "\n"])[ev[3][0]]; //Currently it makes no difference, but I may in the future distinguish.
 			}
 			//write("[%d] %02X %s\n", pos, ev[2], replace(ev[3], (["\r": "<eol>", "\n": "<EOL>"])));
+			if (player) werror("%s", replace(replace(ev[3], "\r", "\n"), "\n\n", "\n"));
 			string time = pos_to_vtt(pos, timings[timingpos], timediv);
 			if (line == "") start = time;
 			//else line += "<" + time + ">"; //Enable karaoke-style captions. Remove if not needed (eg if latency is going to be too strong)
@@ -163,7 +198,8 @@ void msg(Protocols.WebSocket.Frame frm, object conn) {
 
 int main(int argc, array(string) argv) {
 	if (argc > 1) {
-		foreach (argv[1..], string arg) make_karaoke(arg, "-");
+		mapping args = Arg.parse(argv);
+		foreach (args[Arg.REST], string arg) make_karaoke(arg, "-", args->out);
 		return 0;
 	}
 	//Intended logic:
