@@ -146,6 +146,11 @@ void websocket_init(object conn) {
 	send(conn, (["cmd": "init", "type": "chan_vlc", "group": authkey + "#49497888"])); //TODO: Let the channel be configurable
 }
 
+void websocket_close() {
+	write("Websocket disconnected.\n");
+	call_out(websocket_connect, 10);
+}
+
 void msg(Protocols.WebSocket.Frame frm, object conn) {
 	mixed data;
 	if (catch {data = Standards.JSON.decode(frm->text);}) return;
@@ -196,6 +201,14 @@ void msg(Protocols.WebSocket.Frame frm, object conn) {
 	write("Got message: %O\n", data);
 }
 
+void websocket_connect() {
+	object conn = Protocols.WebSocket.Connection();
+	conn->onopen = websocket_init;
+	conn->onmessage = msg;
+	conn->onclose = websocket_close;
+	conn->connect("wss://sikorsky.mustardmine.com/ws");
+}
+
 int main(int argc, array(string) argv) {
 	if (argc > 1) {
 		mapping args = Arg.parse(argv);
@@ -210,10 +223,6 @@ int main(int argc, array(string) argv) {
 	string lua = Stdio.read_file(replace(VLC_EXTENSION_PATH, "~", System.get_home()) + "/vlcstillebot.lua");
 	sscanf(lua || "", "%*s?auth=%[^\n&]&", string key);
 	authkey = key || "";
-	object conn = Protocols.WebSocket.Connection();
-	conn->onopen = websocket_init;
-	conn->onmessage = msg;
-	//TODO: Disconnect hook
-	conn->connect("wss://sikorsky.rosuav.com/ws");
+	websocket_connect();
 	return -1;
 }
